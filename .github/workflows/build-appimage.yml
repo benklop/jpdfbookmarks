@@ -52,7 +52,7 @@ jobs:
       - name: Build AppImage
         run: |
           cd Packaging
-          ./build-appimage.sh
+          ./build-all-and-appimage.sh
       
       - name: Get version
         id: version
