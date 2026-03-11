@@ -202,7 +202,7 @@ fi
 
 # Build AppImage
 echo "Building AppImage..."
-ARCH=x86_64 appimagetool ${APPDIR_NAME} ${APPIMAGE_NAME}
+ARCH=x86_64 appimagetool --appimage-extract-and-run ${APPDIR_NAME} ${APPIMAGE_NAME}
 
 if [ $? -eq 0 ]; then
   echo ""
