@@ -29,7 +29,8 @@ jobs:
           echo "Building all JPdfBookmarks components..."
           
           # Build components in order
-          cd iText-2.1.7-patched && ant jar && cd ..
+          # Note: iText-2.1.7-patched uses nbbuild.xml instead of build.xml
+          cd iText-2.1.7-patched && ant -f nbbuild.xml jar && cd ..
           cd Bookmark && ant jar && cd ..
           cd Colors && ant jar && cd ..
           cd Utilities && ant jar && cd ..

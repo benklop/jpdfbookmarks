@@ -55,7 +55,17 @@ build_component() {
 }
 
 # Build all components in order
-build_component "iText-2.1.7-patched" || exit 1
+# Note: iText-2.1.7-patched uses nbbuild.xml instead of build.xml
+echo "Building iText-2.1.7-patched..."
+cd iText-2.1.7-patched
+ant -f nbbuild.xml jar
+if [ $? -ne 0 ]; then
+  echo "ERROR: Failed to build iText-2.1.7-patched"
+  exit 1
+fi
+cd ..
+echo ""
+
 build_component "Bookmark" || exit 1
 build_component "Colors" || exit 1
 build_component "Utilities" || exit 1
