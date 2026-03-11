@@ -76,8 +76,12 @@ import com.lowagie.text.DocumentException;
 import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.ByteBuffer;
 import com.lowagie.text.pdf.IntHashtable;
+import com.lowagie.text.pdf.PdfAction;
+import com.lowagie.text.pdf.PdfAnnotation;
 import com.lowagie.text.pdf.PdfArray;
 import com.lowagie.text.pdf.PdfBoolean;
+import com.lowagie.text.pdf.PdfBorderArray;
+import com.lowagie.text.pdf.PdfDestination;
 import com.lowagie.text.pdf.PdfDictionary;
 import com.lowagie.text.pdf.PdfIndirectReference;
 import com.lowagie.text.pdf.PdfName;
@@ -113,6 +117,7 @@ public class iTextBookmarksConverter implements IBookmarksConverter {
     private HashMap namesAsString;
     private HashMap namesAsName;
     private IntHashtable pages;
+    private ArrayList<LinkAnnotationSpec> linkAnnotations = new ArrayList<LinkAnnotationSpec>();
 
     public iTextBookmarksConverter() {
     }
@@ -132,6 +137,7 @@ public class iTextBookmarksConverter implements IBookmarksConverter {
         rootBookmark = null;
         filePath = null;
         namesAsString = null;
+        linkAnnotations.clear();
     }
 
     @Override
@@ -190,6 +196,7 @@ public class iTextBookmarksConverter implements IBookmarksConverter {
         if (reader != null) {
             close();
         }
+        linkAnnotations.clear();
         this.filePath = pdfPath;
         if (password != null) {
             reader = new PdfReader(pdfPath, password);
@@ -401,6 +408,7 @@ public class iTextBookmarksConverter implements IBookmarksConverter {
             if (outline != null) {
                 stamper.setOutlines(outline);
             }
+            addLinkAnnotations();
             int preferences = reader.getSimpleViewerPreferences();
             if (showOnOpen) {
                 preferences |= PdfWriter.PageModeUseOutlines;
@@ -430,6 +438,98 @@ public class iTextBookmarksConverter implements IBookmarksConverter {
             pages.put(reader.getPageOrigRef(k).getNumber(), k);
             reader.releasePage(k);
         }
+    }
+
+    @Override
+    public void setLinkAnnotations(ArrayList<LinkAnnotationSpec> linkAnnotations) {
+        this.linkAnnotations.clear();
+        if (linkAnnotations != null) {
+            this.linkAnnotations.addAll(linkAnnotations);
+        }
+    }
+
+    private void addLinkAnnotations() throws DocumentException {
+        if (stamper == null || linkAnnotations == null || linkAnnotations.isEmpty()) {
+            return;
+        }
+
+        for (LinkAnnotationSpec spec : linkAnnotations) {
+            if (spec == null || spec.destination == null) {
+                continue;
+            }
+
+            if (spec.page <= 0 || spec.page > reader.getNumberOfPages()) {
+                continue;
+            }
+
+            if (spec.llx >= spec.urx || spec.lly >= spec.ury) {
+                continue;
+            }
+
+            PdfAction action = buildActionFromBookmark(spec.destination);
+            if (action == null) {
+                continue;
+            }
+
+            Rectangle rect = new Rectangle(spec.llx, spec.lly, spec.urx, spec.ury);
+            PdfAnnotation annotation = PdfAnnotation.createLink(stamper.getWriter(),
+                    rect, PdfAnnotation.HIGHLIGHT_INVERT, action);
+            annotation.setBorder(new PdfBorderArray(0, 0, 0));
+            stamper.addAnnotation(annotation, spec.page);
+        }
+    }
+
+    private PdfAction buildActionFromBookmark(Bookmark bookmark) {
+        BookmarkType type = bookmark.getType();
+        if (type == BookmarkType.Named) {
+            return PdfAction.gotoLocalPage(bookmark.getNamedDestination(),
+                    bookmark.isNamedAsName());
+        }
+
+        if (bookmark.getPageNumber() <= 0) {
+            return null;
+        }
+
+        PdfDestination destination = getPdfDestination(bookmark);
+        if (destination == null) {
+            return null;
+        }
+        return PdfAction.gotoLocalPage(bookmark.getPageNumber(), destination,
+                stamper.getWriter());
+    }
+
+    private PdfDestination getPdfDestination(Bookmark bookmark) {
+        BookmarkType type = bookmark.getType();
+        if (type == BookmarkType.TopLeftZoom) {
+            float left = bookmark.getLeft() == -1 ? -1f : bookmark.getLeft();
+            float top = bookmark.getTop() == -1 ? -1f : bookmark.getTop();
+            float zoom = bookmark.getZoom() <= 0.0f ? 0.0f : bookmark.getZoom();
+            return new PdfDestination(PdfDestination.XYZ, left, top, zoom);
+        } else if (type == BookmarkType.FitPage) {
+            return new PdfDestination(PdfDestination.FIT);
+        } else if (type == BookmarkType.FitWidth) {
+            return new PdfDestination(PdfDestination.FITH,
+                    bookmark.getTop() == -1 ? -1f : bookmark.getTop());
+        } else if (type == BookmarkType.FitHeight) {
+            return new PdfDestination(PdfDestination.FITV,
+                    bookmark.getLeft() == -1 ? -1f : bookmark.getLeft());
+        } else if (type == BookmarkType.FitRect) {
+            if (bookmark.getLeft() == -1 || bookmark.getBottom() == -1
+                    || bookmark.getRight() == -1 || bookmark.getTop() == -1) {
+                return null;
+            }
+            return new PdfDestination(PdfDestination.FITR, bookmark.getLeft(),
+                    bookmark.getBottom(), bookmark.getRight(), bookmark.getTop());
+        } else if (type == BookmarkType.FitContent) {
+            return new PdfDestination(PdfDestination.FITB);
+        } else if (type == BookmarkType.FitContentWidth) {
+            return new PdfDestination(PdfDestination.FITBH,
+                    bookmark.getTop() == -1 ? -1f : bookmark.getTop());
+        } else if (type == BookmarkType.FitContentHeight) {
+            return new PdfDestination(PdfDestination.FITBV,
+                    bookmark.getLeft() == -1 ? -1f : bookmark.getLeft());
+        }
+        return null;
     }
 
     private Bookmark getBookmark() {

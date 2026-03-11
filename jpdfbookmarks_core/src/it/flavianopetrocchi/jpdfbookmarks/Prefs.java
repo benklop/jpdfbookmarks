@@ -255,7 +255,7 @@ public class Prefs {
 	}
 
 	public String getLAF() {
-		String currentLAF = UIManager.getSystemLookAndFeelClassName();
+		String currentLAF = "com.sun.java.swing.plaf.gtk.GTKLookAndFeel";
 		return userPrefs.get(LAF, currentLAF);
 	}
 

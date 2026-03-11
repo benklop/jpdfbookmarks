@@ -74,8 +74,19 @@ public interface IBookmarksConverter {
 
     public ArrayList<AnnotationRect> getLinks(int page, boolean convertNamedDestinations);
 
+    public void setLinkAnnotations(ArrayList<LinkAnnotationSpec> linkAnnotations);
+
     public class AnnotationRect {
         public Bookmark bookmark;
+        public int llx;
+        public int lly;
+        public int urx;
+        public int ury;
+    }
+
+    public class LinkAnnotationSpec {
+        public Bookmark destination;
+        public int page;
         public int llx;
         public int lly;
         public int urx;

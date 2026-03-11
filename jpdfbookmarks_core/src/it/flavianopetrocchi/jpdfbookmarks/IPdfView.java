@@ -73,6 +73,7 @@ public interface IPdfView {
         public void setConnectToClipboard(Boolean set);
 
         public String extractText(Rectangle rectInCrop);
+		public Rectangle getSelectedRectInMediaBox();
 
         public JScrollPane getThumbnails();
 

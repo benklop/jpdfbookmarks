@@ -80,6 +80,9 @@ public class PdfViewAdapter extends JScrollPane implements IPdfView {
     private BufferedImage img;
     private float oldScale;
     volatile boolean painting = false;
+    private volatile boolean isRendering = false;
+    private volatile int requestedPage = -1;
+    private volatile float requestedScale = -1.0f;
     private IBookmarksConverter converter = null;// </editor-fold>
 
 
@@ -537,6 +540,11 @@ public class PdfViewAdapter extends JScrollPane implements IPdfView {
     }
 
     @Override
+    public Rectangle getSelectedRectInMediaBox() {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
     public JScrollPane getThumbnails() {
         throw new UnsupportedOperationException("Not supported yet.");
     }
@@ -569,13 +577,54 @@ public class PdfViewAdapter extends JScrollPane implements IPdfView {
             setBorder(BorderFactory.createLoweredBevelBorder());
         }
 
+        private void scheduleRenderPage(final int page, final float scaleValue) {
+            requestedPage = page;
+            requestedScale = scaleValue;
+            
+            if (isRendering) {
+                return; // A render is already in progress, it will check requestedPage when done
+            }
+            
+            isRendering = true;
+            
+            new javax.swing.SwingWorker<BufferedImage, Void>() {
+                @Override
+                protected BufferedImage doInBackground() throws Exception {
+                    return currentPageObject.getImage(scaleValue);
+                }
+                
+                @Override
+                protected void done() {
+                    try {
+                        BufferedImage newImg = get();
+                        img = newImg;
+                        oldScale = scaleValue;
+                        oldPage = page;
+                        
+                        // Update preferred size and revalidate outside of paintComponent
+                        setPreferredSize(calcViewSize());
+                        revalidate();
+                        repaint();
+                        
+                        isRendering = false;
+                        
+                        // Check if another render was requested while we were rendering
+                        if (requestedPage != oldPage || Math.abs(requestedScale - oldScale) > 0.001f) {
+                            scheduleRenderPage(requestedPage, requestedScale);
+                        }
+                    } catch (Exception e) {
+                        JPdfBookmarks.printErrorForDebug(e);
+                        isRendering = false;
+                    }
+                }
+            }.execute();
+        }
+
         @Override
         public void paintComponent(Graphics g) {
             super.paintComponent(g);
 
             if (currentPageObject == null) {
-                setPreferredSize(viewport.getSize());
-                revalidate();
                 return;
             }
 
@@ -584,33 +633,23 @@ public class PdfViewAdapter extends JScrollPane implements IPdfView {
 
             calcScaleFactor();
 
-
+            // Check if we need to render a new image
             if (oldScale != scale || currentPage != oldPage || img == null) {
-                CursorToolkit.startWaitCursor(PdfViewAdapter.this);
-                try {
-                    img = currentPageObject.getImage(scale);
-                    oldScale = scale;
-                    oldPage = currentPage;
-                } catch (Exception e) {
-                    JPdfBookmarks.printErrorForDebug(e);
-                } finally {
-                    CursorToolkit.stopWaitCursor(PdfViewAdapter.this);
-                }
+                // Schedule async render and draw what we have
+                scheduleRenderPage(currentPage, scale);
             }
 
-            setPreferredSize(calcViewSize());
-            revalidate();
-
+            // Only draw the cached image - no expensive operations here
             if (fitType == FitType.FitRect && drawingComplete == false && rect != null && img != null) {
-                BufferedImage clone = new BufferedImage(img.getWidth(),
+                BufferedImage tempImg = new BufferedImage(img.getWidth(),
                         img.getHeight(), img.getType());
-                Graphics gcopy = clone.getGraphics();
-                gcopy.drawImage(img, 0, 0, null);
-                Graphics2D g2img = (Graphics2D) clone.getGraphics();
-                g2img.setStroke(new BasicStroke(2.0f));
-                g2img.setColor(Color.red);
-                g2img.drawRect(rect.x, rect.y, rect.width, rect.height);
-                g2.drawImage(clone, 0, 0, this);
+                Graphics2D g2temp = (Graphics2D) tempImg.getGraphics();
+                g2temp.drawImage(img, 0, 0, null);
+                g2temp.setStroke(new BasicStroke(2.0f));
+                g2temp.setColor(Color.red);
+                g2temp.drawRect(rect.x, rect.y, rect.width, rect.height);
+                g2.drawImage(tempImg, 0, 0, this);
+                g2temp.dispose();
             } else if (img != null) {
                 g2.drawImage(img, 0, 0, this);
             }
@@ -724,4 +763,3 @@ public class PdfViewAdapter extends JScrollPane implements IPdfView {
 
 
 }
-

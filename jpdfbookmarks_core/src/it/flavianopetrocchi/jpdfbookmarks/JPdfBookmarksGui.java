@@ -50,6 +50,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Frame;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
@@ -277,6 +278,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
     private Action showOnOpenAction;
     private Action addWebLinkAction;
     private Action addLaunchLinkAction;
+    private Action createLinkAnnotationAction;
     private Action showActionsDialog;
     private Action applyPageOffset;
     private Action optionsDialogAction;
@@ -309,7 +311,6 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
     }
 
     private void loadWindowState() {
-        Ut.changeLAF(userPrefs.getLAF(), this);
         setSize(userPrefs.getSize());
         setLocation(userPrefs.getLocation());
         setExtendedState(userPrefs.getWindowState());
@@ -343,6 +344,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
         viewPanel.addTextCopiedListener(this);
 
         initComponents();
+        applyLookAndFeel(userPrefs.getLAF(), false);
 
         fileOperator.addFileOperationListener(this);
         viewPanel.addPageChangedListener(this);
@@ -383,6 +385,22 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
             if (flavor.equals(bookmarksFlavor) && fileOperator != null && (fileOperator.getFilePath() != null)) {
                 pasteAction.setEnabled(true);
             }
+        }
+    }
+
+    private void applyLookAndFeel(String laf, boolean persistPreference) {
+        Ut.changeLAF(laf, this);
+        if (leftPanel != null) {
+            leftPanel.updateComponentsUI();
+        }
+        if (lblInheritLeft != null) {
+            lblInheritLeft.setUI(new VerticalLabelUI(false));
+        }
+        if (bookmarksTree != null) {
+            bookmarksTree.updateTree(mouseAdapter);
+        }
+        if (persistPreference) {
+            userPrefs.setLAF(laf);
         }
     }
 
@@ -447,7 +465,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
                     addSiblingAction, showOnOpenAction, dumpAction, loadAction,
                     selectText, connectToClipboard, openLinkedPdf, copyBookmarkFromViewAction);
             if (evt.getOperation() == FileOperationEvent.Operation.FILE_OPENED) {
-                Ut.enableActions(true, saveAsAction, extractLinks);
+                Ut.enableActions(true, saveAsAction, extractLinks, createLinkAnnotationAction);
             }
             tbShowOnOpen.setSelected(fileOperator.getShowBookmarksOnOpen());
             cbShowOnOpen.setSelected(fileOperator.getShowBookmarksOnOpen());
@@ -497,7 +515,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
                     renameAction, setDestFromViewAction, changeColorAction,
                     dumpAction, loadAction, addWebLinkAction, addLaunchLinkAction, saveAction,
                     applyPageOffset, selectText, connectToClipboard, showActionsDialog, openLinkedPdf,
-                    copyBookmarkFromViewAction, extractLinks);
+                    copyBookmarkFromViewAction, extractLinks, createLinkAnnotationAction);
             lblMouseOverNode.setText(" ");
             lblSelectedNode.setText(" ");
             lblCurrentView.setText(" ");
@@ -630,7 +648,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
         Ut.enableActions((bookmark != null), setBoldAction, setItalicAction,
                 changeColorAction, applyPageOffset, deleteAction, renameAction,
                 setDestFromViewAction, cutAction, copyAction, addWebLinkAction,
-                addLaunchLinkAction);
+            addLaunchLinkAction, createLinkAnnotationAction);
 
         //enable or disable actions applicable to only a single bookmark
         TreePath[] paths = bookmarksTree.getSelectionPaths();
@@ -1083,6 +1101,55 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
 
         fileOperator.setFileChanged(true);
         goToWebLinkAsking(address);
+    }
+
+    private void createLinkAnnotationFromSelection() {
+        if (fileOperator.isReadonly()) {
+            JOptionPane.showMessageDialog(this,
+                    Res.getString("MSG_READONLY"),
+                    JPdfBookmarks.APP_NAME,
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        TreePath[] paths = bookmarksTree.getSelectionPaths();
+        if (paths == null || paths.length != 1) {
+            JOptionPane.showMessageDialog(this,
+                    Res.getString("ERROR_SELECT_SINGLE_BOOKMARK_FOR_LINK"),
+                    JPdfBookmarks.APP_NAME,
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Rectangle selectedRect = viewPanel.getSelectedRectInMediaBox();
+        if (selectedRect == null) {
+            JOptionPane.showMessageDialog(this,
+                    Res.getString("ERROR_SELECT_TEXT_RECT_FOR_LINK"),
+                    JPdfBookmarks.APP_NAME,
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        Bookmark selectedBookmark = getSelectedBookmark();
+        IBookmarksConverter.LinkAnnotationSpec spec =
+                new IBookmarksConverter.LinkAnnotationSpec();
+        spec.destination = Bookmark.cloneBookmark(selectedBookmark, false);
+        spec.page = viewPanel.getCurrentPage();
+        spec.llx = selectedRect.x;
+        spec.lly = selectedRect.y;
+        spec.urx = selectedRect.x + selectedRect.width;
+        spec.ury = selectedRect.y + selectedRect.height;
+
+        UndoableCreateLinkAnnotation undoable =
+                new UndoableCreateLinkAnnotation(fileOperator, spec);
+        undoable.doEdit();
+        undoSupport.postEdit(undoable);
+        fileOperator.setFileChanged(true);
+
+        JOptionPane.showMessageDialog(this,
+                Res.getString("LINK_ANNOTATION_ADDED"),
+                JPdfBookmarks.APP_NAME,
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void launchFile(String file) {
@@ -1939,6 +2006,16 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
             }
         };
 
+        createLinkAnnotationAction = new ActionBuilder("ACTION_CREATE_LINK_ANNOTATION",
+                "ACTION_CREATE_LINK_ANNOTATION_DESCR", "ctrl alt L",
+                null, false) {
+
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                createLinkAnnotationFromSelection();
+            }
+        };
+
         applyPageOffset = new ActionBuilder("ACTION_PAGE_OFFSET",
                 "ACTION_PAGE_OFFSET_DESCR", null, "page-offset.png", false) {
 
@@ -2444,6 +2521,8 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
         item.setMnemonic(Res.mnemonicFromRes("MENU_ADD_LAUNCH_LINK_MNEMONIC"));
         item = menuEdit.add(setDestFromViewAction);
         item.setMnemonic(Res.mnemonicFromRes("MENU_SET_DESTINATION_MNEMONIC"));
+        item = menuEdit.add(createLinkAnnotationAction);
+        item.setMnemonic(Res.mnemonicFromRes("MENU_CREATE_LINK_ANNOTATION_MNEMONIC"));
         item = menuEdit.add(showActionsDialog);
         item.setMnemonic(Res.mnemonicFromRes("MENU_ACTIONS_DIALOG_MNEMONIC"));
         menuBar.add(menuEdit);
@@ -2766,6 +2845,8 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
         item.setMnemonic(Res.mnemonicFromRes("MENU_ADD_LAUNCH_LINK_MNEMONIC"));
         item = treeMenu.add(setDestFromViewAction);
         item.setMnemonic(Res.mnemonicFromRes("MENU_SET_DESTINATION_MNEMONIC"));
+        item = treeMenu.add(createLinkAnnotationAction);
+        item.setMnemonic(Res.mnemonicFromRes("MENU_CREATE_LINK_ANNOTATION_MNEMONIC"));
         item = treeMenu.add(showActionsDialog);
         item.setMnemonic(Res.mnemonicFromRes("MENU_ACTIONS_DIALOG_MNEMONIC"));
     }
@@ -2781,15 +2862,7 @@ class JPdfBookmarksGui extends JFrame implements FileOperationListener,
 
         @Override
         public void actionPerformed(ActionEvent arg0) {
-            Ut.changeLAF(laf, JPdfBookmarksGui.this);
-            leftPanel.updateComponentsUI();
-//            Ut.changeLAF(laf, cardsContainer);
-//            Ut.changeLAF(laf, openLeftPanelContainer);
-            lblInheritLeft.setUI(new VerticalLabelUI(false));
-//            JOptionPane.showMessageDialog(JPdfBookmarksGui.this,
-//                    Res.getString("LAF_CHANGED_RESTART_MANUALLY"));
-            userPrefs.setLAF(laf);
-            bookmarksTree.updateTree(JPdfBookmarksGui.this.mouseAdapter);
+            applyLookAndFeel(laf, true);
         }
     }
 

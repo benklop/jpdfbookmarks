@@ -102,6 +102,9 @@ public class JPedalViewPanel extends JScrollPane implements IPdfView {
     private BufferedImage img, cloneImg;
     private float oldScale;
     volatile boolean painting = false;
+    private volatile boolean isRendering = false;
+    private volatile int requestedPage = -1;
+    private volatile float requestedScale = -1.0f;
     private PdfDecoder decoder;
     private int cropBoxX, cropBoxY;
     private int cropBoxWidth, cropBoxHeight;
@@ -844,6 +847,25 @@ public class JPedalViewPanel extends JScrollPane implements IPdfView {
         return text;
     }
 
+    @Override
+    public Rectangle getSelectedRectInMediaBox() {
+        if (!textSelectionActive || !drawingComplete || rectInCropBox == null) {
+            return null;
+        }
+
+        int left = rectInCropBox.x + cropBoxX;
+        int right = rectInCropBox.x + rectInCropBox.width + cropBoxX;
+        int top = mediaBoxHeight - (rectInCropBox.y + cropBoxY);
+        int bottom = mediaBoxHeight - (rectInCropBox.y + rectInCropBox.height + cropBoxY);
+
+        int width = right - left;
+        int height = top - bottom;
+        if (width <= 0 || height <= 0) {
+            return null;
+        }
+        return new Rectangle(left, bottom, width, height);
+    }
+
     public String extractTextInRect(int tlx, int tly, int brx, int bry) {
         String text = null;
         try {
@@ -876,13 +898,60 @@ public class JPedalViewPanel extends JScrollPane implements IPdfView {
             setBorder(BorderFactory.createLoweredBevelBorder());
         }
 
+        private void scheduleRenderPage(final int page, final float scaleValue) {
+            requestedPage = page;
+            requestedScale = scaleValue;
+            
+            if (isRendering) {
+                return; // A render is already in progress, it will check requestedPage when done
+            }
+            
+            isRendering = true;
+            
+            new javax.swing.SwingWorker<BufferedImage, Void>() {
+                @Override
+                protected BufferedImage doInBackground() throws Exception {
+                    decoder.setPageParameters(scaleValue, page + 1);
+                    return decoder.getPageAsImage(page + 1);
+                }
+                
+                @Override
+                protected void done() {
+                    try {
+                        BufferedImage newImg = get();
+                        img = newImg;
+                        oldScale = scaleValue;
+                        oldPage = page;
+                        
+                        if (fitType == FitType.FitRect || textSelectionActive) {
+                            cloneImg = new BufferedImage(img.getWidth(),
+                                    img.getHeight(), img.getType());
+                        }
+                        
+                        // Update preferred size and revalidate outside of paintComponent
+                        setPreferredSize(calcViewSize());
+                        revalidate();
+                        repaint();
+                        
+                        isRendering = false;
+                        
+                        // Check if another render was requested while we were rendering
+                        if (requestedPage != oldPage || Math.abs(requestedScale - oldScale) > 0.001f) {
+                            scheduleRenderPage(requestedPage, requestedScale);
+                        }
+                    } catch (Exception e) {
+                        JPdfBookmarks.printErrorForDebug(e);
+                        isRendering = false;
+                    }
+                }
+            }.execute();
+        }
+
         @Override
         public void paintComponent(Graphics g) {
             super.paintComponent(g);
 
             if (decoder == null || pdfPageData == null) {
-                setPreferredSize(viewport.getSize());
-                revalidate();
                 return;
             }
 
@@ -890,83 +959,52 @@ public class JPedalViewPanel extends JScrollPane implements IPdfView {
 
             calcScaleFactor();
 
+            // Check if we need to render a new image
             if (oldScale != scale || currentPage != oldPage || img == null) {
-                CursorToolkit.startWaitCursor(JPedalViewPanel.this);
-                try {
-                    decoder.setPageParameters(scale, currentPage + 1);
-                    img = decoder.getPageAsImage(currentPage + 1);
-                    oldScale = scale;
-                    oldPage = currentPage;
-                } catch (Exception e) {
-                    JPdfBookmarks.printErrorForDebug(e);
-                } finally {
-                    CursorToolkit.stopWaitCursor(JPedalViewPanel.this);
-                }
-                if (fitType == FitType.FitRect || textSelectionActive) {
-                    cloneImg = new BufferedImage(img.getWidth(),
-                            img.getHeight(), img.getType());
-                }
+                // Schedule async render and draw what we have
+                scheduleRenderPage(currentPage, scale);
             }
 
-            setPreferredSize(calcViewSize());
-            revalidate();
-
+            // Only draw the cached image - no expensive operations here
             if (img != null) {
                 if (fitType == FitType.FitRect || textSelectionActive) {
-                    if (cloneImg == null) {
-                        cloneImg = new BufferedImage(img.getWidth(),
-                                img.getHeight(), img.getType());
-                    }
-                    Graphics2D g2CloneImg = (Graphics2D) cloneImg.getGraphics();
-                    g2CloneImg.drawImage(img, 0, 0, null);
-                    g2CloneImg.setStroke(new BasicStroke());
+                    // Create a working copy for drawing overlays
+                    BufferedImage tempImg = new BufferedImage(img.getWidth(),
+                            img.getHeight(), img.getType());
+                    Graphics2D g2TempImg = (Graphics2D) tempImg.getGraphics();
+                    g2TempImg.drawImage(img, 0, 0, null);
+                    g2TempImg.setStroke(new BasicStroke());
                     if (textSelectionActive) {
-                        g2CloneImg.setColor(Color.blue);
+                        g2TempImg.setColor(Color.blue);
                     } else {
-                        g2CloneImg.setColor(Color.red);
+                        g2TempImg.setColor(Color.red);
                     }
 
                     if (drawingComplete == false) {
-                        g2CloneImg.drawRect(drawingRect.x, drawingRect.y, drawingRect.width,
+                        g2TempImg.drawRect(drawingRect.x, drawingRect.y, drawingRect.width,
                                 drawingRect.height);
                         if (textSelectionActive) {
-                            g2CloneImg.setColor(new Color(0, 0, 255, 50));
-                            g2CloneImg.fillRect(drawingRect.x, drawingRect.y, drawingRect.width,
+                            g2TempImg.setColor(new Color(0, 0, 255, 50));
+                            g2TempImg.fillRect(drawingRect.x, drawingRect.y, drawingRect.width,
                                     drawingRect.height);
                         }
                     } else {
                         if (!textSelectionActive) {
-                            g2CloneImg.drawRect(Math.round(rectInCropBox.x * scale),
+                            g2TempImg.drawRect(Math.round(rectInCropBox.x * scale),
                                     Math.round(rectInCropBox.y * scale),
                                     Math.round(scale * rectInCropBox.width),
                                     Math.round(scale * rectInCropBox.height));
                         } else {
-                            g2CloneImg.drawImage(img, 0, 0, this);
+                            g2TempImg.drawImage(img, 0, 0, this);
                         }
                     }
 
-                    g2.drawImage(cloneImg, 0, 0, this);
+                    g2.drawImage(tempImg, 0, 0, this);
+                    g2TempImg.dispose();
 
                 } else {
-//                    if (!rects.isEmpty()) {
-//                        if (cloneImg == null) {
-//                            cloneImg = new BufferedImage(img.getWidth(),
-//                                    img.getHeight(), img.getType());
-//                        }
-//                        Graphics2D g2CloneImg = (Graphics2D) cloneImg.getGraphics();
-//                        g2CloneImg.drawImage(img, 0, 0, this);
-//                        g2CloneImg.setColor(Color.gray);
-//                        for (Rectangle r : rects) {
-//                            g2CloneImg.drawRect(r.x, r.y, r.width, r.height);
-//                        }
-//                        g2.drawImage(cloneImg, 0, 0, this);
-//                    } else {
-
                     g2.drawImage(img, 0, 0, this);
-//                    }
                 }
-
-
             }
 
             Bookmark bookmark = getBookmarkFromView();

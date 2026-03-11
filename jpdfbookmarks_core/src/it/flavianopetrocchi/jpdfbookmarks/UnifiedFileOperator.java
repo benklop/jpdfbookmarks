@@ -53,6 +53,8 @@ public class UnifiedFileOperator {
     private byte[] ownerPassword;
     private byte[] userPassword;
     private boolean readonly = false;
+    private ArrayList<IBookmarksConverter.LinkAnnotationSpec> pendingLinkAnnotations =
+            new ArrayList<IBookmarksConverter.LinkAnnotationSpec>();
 
     public File getFile() {
         return file;
@@ -96,6 +98,7 @@ public class UnifiedFileOperator {
     }
 
     public void open(File file) throws Exception {
+        clearPendingLinkAnnotations();
         this.file = file;
         try {
             filePath = file.getCanonicalPath();
@@ -213,6 +216,7 @@ public class UnifiedFileOperator {
             userPassword = null;
         }
         readonly = false;
+        clearPendingLinkAnnotations();
     }
 
     public void setFileChanged(boolean changed) {
@@ -243,6 +247,8 @@ public class UnifiedFileOperator {
             bookmarksConverter.open(filePath, userPassword);
             bookmarksConverter.setShowBookmarksOnOpen(showOnOpen);
             bookmarksConverter.rebuildBookmarksFromTreeNodes(root);
+            bookmarksConverter.setLinkAnnotations(
+                    new ArrayList<IBookmarksConverter.LinkAnnotationSpec>(pendingLinkAnnotations));
             bookmarksConverter.save(path, userPassword, ownerPassword);
             fileSaved = true;
             this.filePath = path;
@@ -255,6 +261,7 @@ public class UnifiedFileOperator {
             fireFileOperationEvent(new FileOperationEvent(this, path,
                     FileOperationEvent.Operation.FILE_SAVED));
             setFileChanged(false);
+            clearPendingLinkAnnotations();
             bookmarksConverter.close();
             bookmarksConverter = null;
             return fileSaved;
@@ -355,6 +362,18 @@ public class UnifiedFileOperator {
 
     byte[] getPassword() {
         return userPassword;
+    }
+
+    public void addPendingLinkAnnotation(IBookmarksConverter.LinkAnnotationSpec spec) {
+        pendingLinkAnnotations.add(spec);
+    }
+
+    public void removePendingLinkAnnotation(IBookmarksConverter.LinkAnnotationSpec spec) {
+        pendingLinkAnnotations.remove(spec);
+    }
+
+    public void clearPendingLinkAnnotations() {
+        pendingLinkAnnotations.clear();
     }
 
     private class FireInEventThread implements Runnable {
