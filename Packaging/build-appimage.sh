@@ -42,6 +42,19 @@ if [ ! -f ../jpdfbookmarks_core/dist/jpdfbookmarks.jar ]; then
   echo ""
   echo "ERROR: Project has not been built yet."
   echo ""
+  echo "Looking for: ../jpdfbookmarks_core/dist/jpdfbookmarks.jar"
+  echo "Current directory: $(pwd)"
+  echo ""
+  echo "Directory contents:"
+  ls -la ../jpdfbookmarks_core/ 2>/dev/null || echo "jpdfbookmarks_core directory not found"
+  echo ""
+  if [ -d ../jpdfbookmarks_core/dist ]; then
+    echo "Contents of dist directory:"
+    ls -la ../jpdfbookmarks_core/dist/
+  else
+    echo "dist directory does not exist"
+  fi
+  echo ""
   echo "Please build the project first by running:"
   echo "  cd jpdfbookmarks_core"
   echo "  ant jar"

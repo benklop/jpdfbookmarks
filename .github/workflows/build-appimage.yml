@@ -42,6 +42,15 @@ jobs:
           cd jpdfbookmarks_core && ant jar && cd ..
           
           echo "Build complete!"
+          
+      - name: Verify build outputs
+        run: |
+          echo "Checking for JAR files..."
+          find . -name "*.jar" -path "*/dist/*" -o -name "*.jar" -path "*/build/*" | head -20
+          echo ""
+          echo "Checking jpdfbookmarks_core specifically..."
+          ls -la jpdfbookmarks_core/dist/ || echo "dist directory not found"
+          ls -la jpdfbookmarks_core/build/ || echo "build directory not found"
       
       - name: Download appimagetool
         run: |
@@ -52,7 +61,7 @@ jobs:
       - name: Build AppImage
         run: |
           cd Packaging
-          ./build-all-and-appimage.sh
+          ./build-appimage.sh
       
       - name: Get version
         id: version
