@@ -27,9 +27,15 @@ JVM_OPTIONS="-Xms64m -Xmx512m"
 
 SCRIPT_DIR=$(cd $(dirname "$0"); pwd)
 
+# Build classpath with all JARs in lib directory
+CLASSPATH="$SCRIPT_DIR/$JAR_NAME"
+for jar in "$SCRIPT_DIR"/lib/*.jar; do
+  CLASSPATH="$CLASSPATH:$jar"
+done
+
 if [ -n "$JAVA_HOME" ]; then
-  "$JAVA_HOME/bin/java" $JVM_OPTIONS -jar "$SCRIPT_DIR/$JAR_NAME" "$@"
+  "$JAVA_HOME/bin/java" $JVM_OPTIONS -cp "$CLASSPATH" it.flavianopetrocchi.jpdfbookmarks.JPdfBookmarks "$@"
 else
-  java $JVM_OPTIONS -jar "$SCRIPT_DIR/$JAR_NAME" "$@"
+  java $JVM_OPTIONS -cp "$CLASSPATH" it.flavianopetrocchi.jpdfbookmarks.JPdfBookmarks "$@"
 fi
 

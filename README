@@ -276,6 +276,33 @@ Run the packager.sh script with:
 
 $ sh packager.sh
 
+To create an AppImage package:
+===============================
+If the project is already built, run the build-appimage.sh script with:
+
+$ sh build-appimage.sh
+
+To build all components and create an AppImage in one step:
+
+$ sh build-all-and-appimage.sh
+
+This will create a portable AppImage file that can run on most Linux 
+distributions without installation. The AppImage requires Java Runtime 
+Environment (JRE) 6 or later to be installed on the system.
+
+Note: You need to have appimagetool installed. If not available, the script 
+will create the AppDir structure and provide instructions for downloading and 
+installing appimagetool.
+
+Automated AppImage builds:
+===========================
+When a new release is created on GitHub, the AppImage is automatically built 
+and attached to the release by a GitHub Actions workflow. You can find the 
+AppImage file in the release assets.
+
+You can also manually trigger the workflow from the Actions tab to build an 
+AppImage without creating a release.
+
  
 
 *******************************************************************************

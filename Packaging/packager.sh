@@ -59,7 +59,21 @@ cp ../jpdfbookmarks_core/dist/jpdfbookmarks.jar ${NAME}
 cp ../README ${NAME}
 cp ../COPYING ${NAME}
 mkdir ${NAME}/lib
-cp ../jpdfbookmarks_core/dist/lib/* ${NAME}/lib
+
+# Copy all dependency JARs
+cp ../Colors/dist/Colors.jar ${NAME}/lib/
+cp ../Utilities/dist/Utilities.jar ${NAME}/lib/
+cp ../jpdfbookmarks_graphics/dist/jpdfbookmarks_graphics.jar ${NAME}/lib/
+cp ../jpdfbookmarks_languages/dist/jpdfbookmarks_languages.jar ${NAME}/lib/
+cp ../iTextBookmarksConverter/dist/iTextBookmarksConverter.jar ${NAME}/lib/
+cp ../Bookmark/dist/Bookmark.jar ${NAME}/lib/
+cp ../iText-2.1.7-patched/dist/iText-2.1.7-patched.jar ${NAME}/lib/
+cp ../CollapsingPanel/dist/CollapsingPanel.jar ${NAME}/lib/
+cp ../ResourceHelper/dist/ResourceHelper.jar ${NAME}/lib/
+
+# Copy external library JARs
+cp ../jpdfbookmarks_lib/*.jar ${NAME}/lib/
+
 cp ../jpdfbookmarks_graphics/artwork/jpdfbookmarks.png ${NAME}
 
 zip -r ${NAME}.zip ${NAME}
@@ -68,11 +82,23 @@ tar -cpvzf ${NAME}.tar.gz ${NAME}
 rm -f ${NAME}.tar
 rm -f -R ${NAME}
 
-svn export .. ${SRCNAME}
+# Create source package - handle both Git and SVN
+if [ -d ../.git ]; then
+  # Git repository - use git archive
+  cd ..
+  git archive --format=tar --prefix=${SRCNAME}/ HEAD | tar -x -C Packaging/
+  cd ${SCRIPTDIR}
+elif [ -d ../.svn ]; then
+  # SVN repository - use svn export
+  svn export .. ${SRCNAME}
+else
+  echo "Warning: Not a Git or SVN repository, skipping source package creation"
+fi
 
-zip -r ${SRCNAME}.zip ${SRCNAME}
-tar -cpvzf ${SRCNAME}.tar.gz ${SRCNAME}      
-      
-rm -f -R ${SRCNAME}
+if [ -d ${SRCNAME} ]; then
+  zip -r ${SRCNAME}.zip ${SRCNAME}
+  tar -cpzf ${SRCNAME}.tar.gz ${SRCNAME}      
+  rm -f -R ${SRCNAME}
+fi
 
 cd ${PREV_DIR}
