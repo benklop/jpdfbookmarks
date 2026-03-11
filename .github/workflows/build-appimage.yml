@@ -26,31 +26,80 @@ jobs:
       
       - name: Build all components
         run: |
+          set -e  # Exit on any error
           echo "Building all JPdfBookmarks components..."
           
           # Build components in order
           # Note: iText-2.1.7-patched uses nbbuild.xml instead of build.xml
-          cd iText-2.1.7-patched && ant -f nbbuild.xml jar && cd ..
-          cd Bookmark && ant jar && cd ..
+          echo "Building iText-2.1.7-patched..."
+          cd iText-2.1.7-patched && ant -f nbbuild.xml jar
+          if [ ! -f dist/iText-2.1.7-patched.jar ]; then
+            echo "ERROR: iText JAR not created!"
+            exit 1
+          fi
+          cd ..
+          
+          echo "Building Bookmark..."
+          cd Bookmark && ant jar
+          if [ ! -f dist/Bookmark.jar ]; then
+            echo "ERROR: Bookmark JAR not created!"
+            exit 1
+          fi
+          cd ..
+          
+          echo "Building Colors..."
           cd Colors && ant jar && cd ..
+          echo "Building Utilities..."
           cd Utilities && ant jar && cd ..
+          echo "Building ResourceHelper..."
           cd ResourceHelper && ant jar && cd ..
+          echo "Building CollapsingPanel..."
           cd CollapsingPanel && ant jar && cd ..
+          echo "Building jpdfbookmarks_graphics..."
           cd jpdfbookmarks_graphics && ant jar && cd ..
+          echo "Building jpdfbookmarks_languages..."
           cd jpdfbookmarks_languages && ant jar && cd ..
+          echo "Building iTextBookmarksConverter..."
           cd iTextBookmarksConverter && ant jar && cd ..
-          cd jpdfbookmarks_core && ant jar && cd ..
+          
+          echo "Building jpdfbookmarks_core..."
+          cd jpdfbookmarks_core && ant jar
+          if [ ! -f dist/jpdfbookmarks.jar ]; then
+            echo "ERROR: jpdfbookmarks.jar not created!"
+            ls -laR dist/ || echo "No dist directory"
+            ls -laR build/ || echo "No build directory"
+            exit 1
+          fi
+          cd ..
           
           echo "Build complete!"
           
       - name: Verify build outputs
         run: |
-          echo "Checking for JAR files..."
-          find . -name "*.jar" -path "*/dist/*" -o -name "*.jar" -path "*/build/*" | head -20
+          echo "=== Verifying all JAR files were created ==="
           echo ""
-          echo "Checking jpdfbookmarks_core specifically..."
-          ls -la jpdfbookmarks_core/dist/ || echo "dist directory not found"
-          ls -la jpdfbookmarks_core/build/ || echo "build directory not found"
+          echo "Required JAR files:"
+          for jar in \
+            iText-2.1.7-patched/dist/iText-2.1.7-patched.jar \
+            Bookmark/dist/Bookmark.jar \
+            Colors/dist/Colors.jar \
+            Utilities/dist/Utilities.jar \
+            ResourceHelper/dist/ResourceHelper.jar \
+            CollapsingPanel/dist/CollapsingPanel.jar \
+            jpdfbookmarks_graphics/dist/jpdfbookmarks_graphics.jar \
+            jpdfbookmarks_languages/dist/jpdfbookmarks_languages.jar \
+            iTextBookmarksConverter/dist/iTextBookmarksConverter.jar \
+            jpdfbookmarks_core/dist/jpdfbookmarks.jar
+          do
+            if [ -f "$jar" ]; then
+              echo "✓ $jar"
+            else
+              echo "✗ MISSING: $jar"
+              exit 1
+            fi
+          done
+          echo ""
+          echo "All required JARs present!"
       
       - name: Download appimagetool
         run: |
